@@ -6,7 +6,7 @@
       name="viewport"
       content="initial-scale=1,maximum-scale=1,user-scalable=no"
     />
-    <title>GB Covid infection rate change</title>
+    <title>GB Covid tracker</title>
 
     <style>
       html,
@@ -103,9 +103,9 @@
             const WBL_RATE = att.WBL_RATE;
             let changeDescribe = "";
             if (RATE_CHANGE_STD >= 1) {
-                changeDescribe = "increased by <b>" + WBL_RATE.toFixed(0) + "</b> cases per 100,000. ";
+                changeDescribe = "<b>increased</b> by <b>" + WBL_RATE.toFixed(0) + "</b> cases per 100,000. ";
             } else if (RATE_CHANGE_STD <= -1) {
-                changeDescribe = "decreased by <b>" + WBL_RATE.toFixed(0) + "</b> cases per 100,000. ";
+                changeDescribe = "<b>decreased</b> by <b>" + WBL_RATE.toFixed(0) + "</b> cases per 100,000. ";
             } else {
                 changeDescribe = "not changed. "
             };
@@ -234,7 +234,7 @@
             minValue: 4,
             maxValue: Number.MAX_SAFE_INTEGER,
             symbol: upOverTwoStd,
-            label: "Significantly worse (>2 above)"
+            label: "Significantly worse"
         }, {
             minValue: 2,
             maxValue: 3,
@@ -249,7 +249,7 @@
             minValue: 0,
             maxValue: 0,
             symbol: withinHalfStd,
-            label: "Almost exactly average (±0.5)"
+            label: "Almost exactly average"
         }, {
             minValue: -1,
             maxValue: -1,
@@ -264,7 +264,7 @@
             minValue: Number.MIN_SAFE_INTEGER,
             maxValue: -4,
             symbol: downOverTwoStd,
-            label: "Significantly better (>2 below)"
+            label: "Significantly better"
         }];
 
         const caseChangeRenderer = {
@@ -272,7 +272,7 @@
             field: stDevChangeField,
             // normalizationField: "EDUCBASECY",
             legendOptions: {
-                title: "Better or worse than average? (stdev)"
+                title: "Better or worse than average?"
             },
             defaultSymbol: {
                 type: "simple-fill", // autocasts as new SimpleFillSymbol()
@@ -292,7 +292,7 @@
             field: "LW_RATE_STD",
             // normalizationField: "EDUCBASECY",
             legendOptions: {
-                title: "Better or worse than average? (stdev)"
+                title: "Better or worse than average?"
             },
             defaultSymbol: {
                 type: "simple-fill", // autocasts as new SimpleFillSymbol()
