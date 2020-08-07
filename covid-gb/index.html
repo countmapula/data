@@ -6,12 +6,14 @@
       name="viewport"
       content="initial-scale=1,maximum-scale=1,user-scalable=no"
     />
-    <title>GB Covid tracker</title>
+    <title>GB Covid tracker dancron.in</title>
 
     <style>
       html,
       body,
+      /* https://css-tricks.com/the-trick-to-viewport-units-on-mobile/  */
       #viewDiv {
+        position: fixed;
         padding: 0;
         margin: 0;
         height: 100%;
@@ -31,6 +33,7 @@
     require([
         "esri/Graphic",
         "esri/Map",
+        "esri/core/watchUtils",
         "esri/layers/GeoJSONLayer",
         "esri/layers/support/Field",
         "esri/support/actions/ActionButton",
@@ -43,7 +46,7 @@
         "esri/widgets/Search",
         "esri/widgets/Zoom"
 
-    ], function(Graphic, Map, GeoJSONLayer, Field, ActionButton, Query, StatisticDefinition, MapView, Expand, Home, Legend, Search, Zoom) {
+    ], function(Graphic, Map, watchUtils, GeoJSONLayer, Field, ActionButton, Query, StatisticDefinition, MapView, Expand, Home, Legend, Search, Zoom) {
 
         // Popups
 
@@ -101,25 +104,38 @@
 
             const RATE_CHANGE_STD = att.RATE_CHANGE_STD * att.STD_DIVISOR;
             const WBL_RATE = att.WBL_RATE;
+            const RATE_CHANGE = att.RATE_CHANGE;
             let changeDescribe = "";
-            if (RATE_CHANGE_STD >= 1) {
-                changeDescribe = "<b>increased</b> by <b>" + WBL_RATE.toFixed(0) + "</b> cases per 100,000. ";
-            } else if (RATE_CHANGE_STD <= -1) {
-                changeDescribe = "<b>decreased</b> by <b>" + WBL_RATE.toFixed(0) + "</b> cases per 100,000. ";
+            if (RATE_CHANGE_STD >= 2 && RATE_CHANGE > 1) {
+                changeDescribe = "<b>increased</b> by <b>" + RATE_CHANGE.toFixed(0) + "</b> cases per 100,000. ";
+            } else if (RATE_CHANGE_STD >= 2 && RATE_CHANGE == 1) {
+                changeDescribe = "<b>increased</b> by <b>" + RATE_CHANGE.toFixed(0) + "</b> case per 100,000. ";
+            } else if (RATE_CHANGE_STD <= -2 && RATE_CHANGE < 1) {
+                changeDescribe = "<b>decreased</b> by <b>" + Math.abs(RATE_CHANGE.toFixed(0)) + "</b> cases per 100,000. ";
+            } else if (RATE_CHANGE_STD <= -2 && RATE_CHANGE == 1) {
+                changeDescribe = "<b>decreased</b> by <b>" + Math.abs(RATE_CHANGE.toFixed(0)) + "</b> case per 100,000. ";
             } else {
-                changeDescribe = "not changed. "
+                changeDescribe = "not changed significantly. "
             };
 
             let changeCompare = ""; // better than / worse than / similar to
-            if (RATE_CHANGE_STD >= 1) {
+            if (RATE_CHANGE_STD >= 2) {
                 changeCompare = "worse than"
-            } else if (RATE_CHANGE_STD <= -1) {
+            } else if (RATE_CHANGE_STD <= -2) {
                 changeCompare = "better than"
             } else {
                 changeCompare = "similar to"
             };
 
-            popText = "In the week to {LAST_UPDATE}, {AREA_NAME} reported <b>{LW_RATE}</b> cases of COVID-19 for every 100,000 residents. " +
+            let caseText;
+            const LW_RATE = att.LW_RATE;
+            if (LW_RATE == 1) {
+              caseText = "<b>{LW_RATE}</b> case"
+            } else {
+              caseText = "<b>{LW_RATE}</b> cases"
+            }
+
+            popText = "In the week to {LAST_UPDATE}, {AREA_NAME} reported " + caseText + " of COVID-19 for every 100,000 residents. " +
                 "This rate is <b>" + rateCompare + "</b> the rate in most other places at the moment. <br><br>" +
                 "Compared the the week before, the rate has " + changeDescribe +
                 "This rate of change is <b>" + changeCompare + "</b> most other places at the moment. <br><br>" +
@@ -341,7 +357,7 @@
             layers: [geojsonLayer]
         });
 
-        const fixZoom = 9500000;
+        let fixZoom = 9500000;
 
         const view = new MapView({
             container: "viewDiv",
@@ -403,7 +419,7 @@
             view: view,
             layerInfos: [{
                 layer: geojsonLayer,
-                title: "Cases of COVID-19"
+                title: "Cases of COVID-19 last week"
             }],
             container: document.createElement("div")
         });
@@ -419,7 +435,21 @@
 
         if (/Mobi/.test(navigator.userAgent) == false) {
             legendExpand.expanded = true;
+        } else {
+          // https://css-tricks.com/the-trick-to-viewport-units-on-mobile/
+          // First we get the viewport height and we multiple it by 1% to get a value for a vh unit
+          let vh = window.innerHeight * 0.01;
+          // Then we set the value in the --vh custom property to the root of the document
+          document.documentElement.style.setProperty('--vh', `${vh}px`);
+          // We listen to the resize event
+          window.addEventListener('resize', () => {
+            // We execute the same script as before
+            let vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+          });
         };
+
+        document.getElementById("viewDiv").style.height = window.innerHeight;
 
         // Add the expand instance to the ui
         view.ui.add(legendExpand, "bottom-right");
@@ -432,7 +462,7 @@
             // Should change renderer field
             if (geojsonLayer.renderer.field == stDevChangeField) {
                 geojsonLayer.renderer = caseRateRenderer;
-                geojsonLayer.title = "Cases of COVID-19";
+                geojsonLayer.title = "Cases of COVID-19 last week";
             } else if (geojsonLayer.renderer != stDevChangeField) {
                 geojsonLayer.renderer = caseChangeRenderer;
                 geojsonLayer.title = "Change in cases of COVID-19";
@@ -457,15 +487,6 @@
 
   <body>
     <div id="viewDiv"></div>
-<!-- <div id="symbolDiv">
-<fieldset class="radio-group" id="symbolRadioGroup">
-  <legend class="radio-group-title">Show:</legend>
-  <input class="radio-group-input" type="radio" id="react" name="framework" checked/>
-  <label class="radio-group-label" for="react">Case rate</label>
-  <input class="radio-group-input" type="radio" id="ember" name="framework"/>
-  <label class="radio-group-label" for="ember">Change rate</label>
-</fieldset>
-</div> -->
     <script src="https://s3-us-west-1.amazonaws.com/patterns.esri.com/files/calcite-web/1.2.5/js/calcite-web.min.js"></script>
   </body>
 </html>
