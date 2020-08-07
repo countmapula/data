@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>GB Covid infection rate change</title>
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+
+    <link rel="stylesheet" href="https://s3-us-west-1.amazonaws.com/patterns.esri.com/files/calcite-web/1.2.5/css/calcite-web.min.css">
+
+    <link
+      rel="stylesheet"
+      href="https://js.arcgis.com/4.15/esri/themes/light/main.css"
+    />
+    <script src="https://js.arcgis.com/4.15/"></script>
+
+    <script>
+    require([
+        "esri/Graphic",
+        "esri/Map",
+        "esri/layers/GeoJSONLayer",
+        "esri/layers/support/Field",
+        "esri/support/actions/ActionButton",
+        "esri/tasks/support/Query",
+        "esri/tasks/support/StatisticDefinition",
+        "esri/views/MapView",
+        "esri/widgets/Expand",
+        "esri/widgets/Home",
+        "esri/widgets/Legend",
+        "esri/widgets/Search",
+        "esri/widgets/Zoom"
+
+    ], function(Graphic, Map, GeoJSONLayer, Field, ActionButton, Query, StatisticDefinition, MapView, Expand, Home, Legend, Search, Zoom) {
+        // If GeoJSON files are not on the same domain as your website, a CORS enabled server
+        // or a proxy is required.
+
+
+        // Paste the url into a browser's address bar to download and view the attributes
+        // in the GeoJSON file. These attributes include:
+        // * mag - magnitude
+        // * type - earthquake or other event such as nuclear test
+        // * place - location of the event
+        // * time - the time of the event
+        // Use the Arcade Date() function to format time field into a human-readable format
+
+        // Popups
+
+        const template = {
+            title: "{AREA_NAME}",
+            outFields: ["*"],
+            content: makePopup,
+            // content: "{LAD12NM_EDIT} reported <b>{WeekRate}</b> detections per <b>100,000</b> citizens in the week to <b>{LatestResult}</b>. Weekly change is <b>{StdRelChange}</b> standard deviations.",
+            fieldInfos: [{
+                fieldName: "LAST_UPDATE",
+                format: {
+                    dateFormat: "day-short-month-year"
+                }
+            }, {
+                fieldName: "LW_RATE",
+                format: {
+                    places: 0
+                }
+            }, {
+                fieldName: "RATE_CHANGE_STD",
+                format: {
+                    places: 0
+                }
+            }]
+        };
+
+        function makePopup(feature) {
+            /*
+            "In the week to {LAST_UPDATE}, {AREA_NAME} reported {LW_RATE} cases of
+            COVID-19 for every 100,000 residents.
+
+            This rate is BETTER THAN/WORSE THAN/SIMILAR TO the rate in most other places.
+
+            Compared the the week before, the rate has INCREASED BY WBL_RATE/
+            DECREASED BY WBL_RATE/NOT CHANGED.
+
+            This rate of change is BETTER THAN/WORSE THAN/SIMILAR TO the change in
+            most other places.
+
+            Source:"
+            */
+            const att = feature.graphic.attributes;
+            const LW_RATE_STD = att.LW_RATE_STD * att.STD_DIVISOR; // Whole stdevs
+            let rateCompare = ""; // better than / worse than / similar to
+            if (LW_RATE_STD >= 1) {
+                rateCompare = "worse than"
+            } else if (LW_RATE_STD <= -1) {
+                rateCompare = "better than"
+            } else {
+                rateCompare = "similar to"
+            };
+
+            const RATE_CHANGE_STD = att.RATE_CHANGE_STD * att.STD_DIVISOR;
+            const WBL_RATE = att.WBL_RATE;
+            let changeDescribe = "";
+            if (RATE_CHANGE_STD >= 1) {
+                changeDescribe = "increased by <b>" + WBL_RATE.toFixed(0) + "</b> cases per 100,000. ";
+            } else if (RATE_CHANGE_STD <= -1) {
+                changeDescribe = "decreased by <b>" + WBL_RATE.toFixed(0) + "</b> cases per 100,000. ";
+            } else {
+                changeDescribe = "not changed. "
+            };
+
+            let changeCompare = ""; // better than / worse than / similar to
+            if (RATE_CHANGE_STD >= 1) {
+                changeCompare = "worse than"
+            } else if (RATE_CHANGE_STD <= -1) {
+                changeCompare = "better than"
+            } else {
+                changeCompare = "similar to"
+            };
+
+            let popText = "In the week to {LAST_UPDATE}, {AREA_NAME} reported <b>{LW_RATE}</b> cases of COVID-19 for every 100,000 residents. " +
+                "This rate is <b>" + rateCompare + "</b> the rate in most other places at the moment. <br><br>" +
+                "Compared the the week before, the rate has " + changeDescribe +
+                "This rate of change is <b>" + changeCompare + "</b> most other places at the moment. <br><br>" +
+                'Source: <a href="https://coronavirus.data.gov.uk/cases?areaType=ltla&areaName=' + att.AREA_NAME + '">data.gov.uk</a>'
+            return popText;
+        };
+
+        function getPopupDetails(feature) {
+            // var popDiv = document.createElement("div");
+            let popupText = "";
+            const att = feature.graphic.attributes;
+            if ((att.lwCases, att.latestResultDate, att.weekRateChangeStd, att.lwRateStd) == null) {
+                popupText = "Missing or incomplete data.";
+            } else {
+                let changeText = "";
+                // let weekRate = att.LastWeek / att.Population * 100000;
+                let absChg = Math.abs(att.weekRateChangeStd);
+                if (att.HalfStdRelChange > 0.5) {
+                    changeText = "The Y weekly average is <b>" + absChg + "</b> standard deviations above the previous week."
+                } else if (att.HalfStdRelChange == 0.5) {
+                    changeText = "The Y weekly average is <b>" + absChg + "</b> standard deviation above the previous week."
+                } else if (att.HalfStdRelChange == 0) {
+                    changeText = "The Y weekly average is within half a standard deviation of the previous week."
+                } else if (att.HalfStdRelChange == -0.5) {
+                    changeText = "The Y weekly average is <b>" + absChg + "</b> standard deviation below the previous week."
+                } else if (att.HalfStdRelChange < -0.5) {
+                    changeText = "The Y weekly average is <b>" + absChg + "</b> standard deviations below the previous week."
+                }
+                popupText = "{LAD12NM_EDIT} reported <b>" + att.lwRate.toFixed(0) + "</b> detections per 100,000 citizens in the week to {latestResultDate}. " +
+                    "The overall rate is within " + att.lwRateStd + " stdev of the national average. " + changeText +
+                    '<br><br> Source: <a href="https://coronavirus.data.gov.uk/cases?areaType=ltla&areaName=' + att.LAD12NM_EDIT + '">data.gov.uk</a>';
+            }
+            return popupText;
+        };
+
+        let newPop = "";
+
+        // Symbology
+
+        const upOverTwoStd = {
+            type: "simple-fill", // autocasts as new SimpleFillSymbol()
+            color: "#D01C8B",
+            style: "solid",
+            outline: {
+                width: 0.2,
+                color: [255, 255, 255, 0.5]
+            }
+        };
+
+        const upOneToTwoStd = {
+            type: "simple-fill", // autocasts as new SimpleFillSymbol()
+            color: "#DF67B1",
+            style: "solid",
+            outline: {
+                width: 0.2,
+                color: [255, 255, 255, 0.5]
+            }
+        };
+
+        const upHalfToOneStd = {
+            type: "simple-fill", // autocasts as new SimpleFillSymbol()
+            color: "#EFB3D8",
+            style: "solid",
+            outline: {
+                width: 0.2,
+                color: [255, 255, 255, 0.5]
+            }
+        };
+
+        const withinHalfStd = {
+            type: "simple-fill", // autocasts as new SimpleFillSymbol()
+            color: "#FFFFFF",
+            style: "solid",
+            outline: {
+                width: 0.2,
+                color: [50, 50, 50, 0.4]
+            }
+        };
+
+        const downHalfToOneStd = {
+            type: "simple-fill", // autocasts as new SimpleFillSymbol()
+            color: "#C3E3B6",
+            style: "solid",
+            outline: {
+                width: 0.2,
+                color: [255, 255, 255, 0.5]
+            }
+        };
+
+        const downOneToTwoStd = {
+            type: "simple-fill", // autocasts as new SimpleFillSymbol()
+            color: "#88C76E",
+            style: "solid",
+            outline: {
+                width: 0.2,
+                color: [255, 255, 255, 0.5]
+            }
+        };
+
+        const downOverTwoStd = {
+            type: "simple-fill", // autocasts as new SimpleFillSymbol()
+            color: "#4DAC26",
+            style: "solid",
+            outline: {
+                width: 0.2,
+                color: [255, 255, 255, 0.5]
+            }
+        };
+
+        const stDevChangeField = "RATE_CHANGE_STD";
+
+        const classBreaks = [{
+            minValue: 4,
+            maxValue: Number.MAX_SAFE_INTEGER,
+            symbol: upOverTwoStd,
+            label: "Significantly worse (>2 above)"
+        }, {
+            minValue: 2,
+            maxValue: 3,
+            symbol: upOneToTwoStd,
+            label: " " // "One to two above"
+        }, {
+            minValue: 1,
+            maxValue: 1,
+            symbol: upHalfToOneStd,
+            label: " " //"Half to one above"
+        }, {
+            minValue: 0,
+            maxValue: 0,
+            symbol: withinHalfStd,
+            label: "Almost exactly average (±0.5)"
+        }, {
+            minValue: -1,
+            maxValue: -1,
+            symbol: downHalfToOneStd,
+            label: " " // "Half to one below"
+        }, {
+            minValue: -3,
+            maxValue: -2,
+            symbol: downOneToTwoStd,
+            label: " " // "One to two below"
+        }, {
+            minValue: Number.MIN_SAFE_INTEGER,
+            maxValue: -4,
+            symbol: downOverTwoStd,
+            label: "Significantly better (>2 below)"
+        }];
+
+        const caseChangeRenderer = {
+            type: "class-breaks", // autocasts as new ClassBreaksRenderer()
+            field: stDevChangeField,
+            // normalizationField: "EDUCBASECY",
+            legendOptions: {
+                title: "Better or worse than average? (stdev)"
+            },
+            defaultSymbol: {
+                type: "simple-fill", // autocasts as new SimpleFillSymbol()
+                color: "black",
+                style: "backward-diagonal",
+                outline: {
+                    width: 0.5,
+                    color: [50, 50, 50, 0.6]
+                }
+            },
+            defaultLabel: "No data",
+            classBreakInfos: classBreaks
+        };
+
+        const caseRateRenderer = {
+            type: "class-breaks", // autocasts as new ClassBreaksRenderer()
+            field: "LW_RATE_STD",
+            // normalizationField: "EDUCBASECY",
+            legendOptions: {
+                title: "Better or worse than average? (stdev)"
+            },
+            defaultSymbol: {
+                type: "simple-fill", // autocasts as new SimpleFillSymbol()
+                color: "black",
+                style: "backward-diagonal",
+                outline: {
+                    width: 0.5,
+                    color: [50, 50, 50, 0.6]
+                }
+            },
+            defaultLabel: "No data",
+            classBreakInfos: [{
+                minValue: 4,
+                maxValue: Number.MAX_SAFE_INTEGER,
+                symbol: upOverTwoStd,
+                label: "Significantly worse (>2 above)"
+            }, {
+                minValue: 2,
+                maxValue: 3,
+                symbol: upOneToTwoStd,
+                label: " " // "One to two above"
+            }, {
+                minValue: 1,
+                maxValue: 1,
+                symbol: upHalfToOneStd,
+                label: " " //"Half to one above"
+            }, {
+                minValue: 0,
+                maxValue: 0,
+                symbol: withinHalfStd,
+                label: "Almost exactly average (±0.5)"
+            }, {
+                minValue: -1,
+                maxValue: -1,
+                symbol: downHalfToOneStd,
+                label: " " // "Half to one below"
+            }, {
+                minValue: -3,
+                maxValue: -2,
+                symbol: downOneToTwoStd,
+                label: " " // "One to two below"
+            }, {
+                minValue: Number.MIN_SAFE_INTEGER,
+                maxValue: -4,
+                symbol: downOverTwoStd,
+                label: "Significantly better (>2 below)"
+            }]
+        };
+
+        // caseRateRenderer.field = "Population"; // Test
+
+        // caseRateRenderer.field = "WeekBeforeLast"
+
+        // Create a symbol for drawing the point
+        var resultSymbol = {
+            type: "simple-marker", // autocasts as new SimpleMarkerSymbol()
+            color: [226, 119, 40],
+            outline: {
+                // autocasts as new SimpleLineSymbol()
+                color: [255, 255, 255],
+                width: 2
+            }
+        };
+        // Add the geometry and symbol to a new graphic
+        var polygonGraphic = new Graphic({
+            //  geometry: polygon,
+            symbol: resultSymbol
+        });
+
+        const url = "covid.geojson";
+        // const url = "//s3.eu-west-2.amazonaws.com/covid.dash.test/covid.geojson"
+
+
+        const geojsonLayer = new GeoJSONLayer({
+            url: url,
+            // outFields: ["*"],
+            popupTemplate: template,
+            renderer: caseRateRenderer //optional
+        });
+
+        const map = new Map({
+            // basemap: "gray",
+            layers: [geojsonLayer]
+        });
+
+        const fixZoom = 9500000;
+
+        const view = new MapView({
+            container: "viewDiv",
+            center: [-1.75, 54],
+            zoom: fixZoom,
+            map: map,
+            spatialReference: {
+                wkid: 102100
+            }
+        });
+
+        view.popup.collapseEnabled = false;
+
+        view.constraints = {
+            minScale: fixZoom, // User cannot zoom out beyond a scale of 1:500,000
+            maxScale: fixZoom, // User can overzoom tiles
+            rotationEnabled: false // Disables map rotation
+        };
+
+        view.ui.remove('zoom');
+
+        // view.on("drag", function(evt){
+        //   // prevents panning with the mouse drag event
+        //   evt.stopPropagation();
+        // });
+
+        var searchWidget = new Search({
+            view: view,
+            includeDefaultSources: false,
+            autoSelect: true,
+            locationEnabled: false,
+            // resultGraphicEnabled: true,
+            // resultGraphic: resultSymbol,
+            allPlaceholder: "Local Authority",
+            zoomScale: 6,
+            sources: [{
+                layer: geojsonLayer,
+                searchFields: ["AREA_NAME"],
+                suggestionTemplate: "{AREA_NAME}",
+                exactMatch: false,
+                outFields: ["*"],
+                placeholder: "Local Authority search",
+                name: "Local Authority",
+                // zoomScale: 6,
+                // resultSymbol: {
+                //   type: "picture-marker", // autocasts as new PictureMarkerSymbol()
+                //   // url:
+                //   //   "https://developers.arcgis.com/javascript/latest/sample-code/widgets-search-multiplesource/live/images/senate.png",
+                //   height: 36
+                // }
+            }]
+        });
+
+        // Add the search widget to the top left corner of the view
+        view.ui.add(searchWidget, {
+            position: "top-right"
+        });
+
+        view.ui.add(searchWidget, {
+            position: "top-right"
+        });
+
+        var homeBtn = new Home({
+            view: view
+        });
+
+        // Add the home button to the top left corner of the view
+        view.ui.add(homeBtn, "top-left");
+
+        var legend = new Legend({
+            view: view,
+            layerInfos: [{
+                layer: geojsonLayer,
+                title: "Cases of COVID-19"
+            }],
+            container: document.createElement("div")
+        });
+
+        // Add widget to the bottom right corner of the view
+        // view.ui.add(legend, "bottom-right");
+        var legendExpand = new Expand({
+            view: view,
+            content: legend,
+            // expanded: true,
+            expandIconClass: 'esri-icon-handle-vertical'
+        });
+
+        // Check for mobile browsers
+        if (/Mobi/.test(navigator.userAgent) == false) {
+            legendExpand.expanded = true;
+        };
+
+        // Add the expand instance to the ui
+        view.ui.add(legendExpand, "bottom-right");
+
+        var layerSwitch = document.createElement('div');
+        layerSwitch.className = "esri-icon-swap esri-widget--button esri-widget esri-interactive";
+        layerSwitch.addEventListener('click', function(evt) {
+            // Should change renderer field
+            if (geojsonLayer.renderer.field == stDevChangeField) {
+                geojsonLayer.renderer = caseRateRenderer;
+                geojsonLayer.title = "Cases of COVID-19";
+            } else if (geojsonLayer.renderer != stDevChangeField) {
+                geojsonLayer.renderer = caseChangeRenderer;
+                geojsonLayer.title = "Change in cases of COVID-19";
+            } else {
+                console.error("Renderer not found")
+            }
+        })
+        view.ui.add(layerSwitch, "top-left");
+
+        var goToDocs = document.createElement('div');
+        goToDocs.className = "esri-icon-question esri-widget--button esri-widget esri-interactive";
+        goToDocs.addEventListener("click", function(evt){
+          window.open("https://dancron.in");
+        });
+        view.ui.add(goToDocs, "top-left");
+
+    });
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv"></div>
+<!-- <div id="symbolDiv">
+<fieldset class="radio-group" id="symbolRadioGroup">
+  <legend class="radio-group-title">Show:</legend>
+  <input class="radio-group-input" type="radio" id="react" name="framework" checked/>
+  <label class="radio-group-label" for="react">Case rate</label>
+  <input class="radio-group-input" type="radio" id="ember" name="framework"/>
+  <label class="radio-group-label" for="ember">Change rate</label>
+</fieldset>
+</div> -->
+    <script src="https://s3-us-west-1.amazonaws.com/patterns.esri.com/files/calcite-web/1.2.5/js/calcite-web.min.js"></script>
+  </body>
+</html>
