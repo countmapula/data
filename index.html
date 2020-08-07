@@ -6,17 +6,17 @@
       name="viewport"
       content="initial-scale=1,maximum-scale=1,user-scalable=no"
     />
-    <title>GB Covid tracker</title>
+    <title>GB Covid tracker | dancron.in</title>
 
     <style>
       html,
       body,
       /* https://css-tricks.com/the-trick-to-viewport-units-on-mobile/  */
       #viewDiv {
+        position: fixed;
         padding: 0;
         margin: 0;
-        height: 100vh; /* Fallback for browsers that do not support Custom Properties */
-        height: calc(var(--vh, 1vh) * 100);
+        height: 100%;
         width: 100%;
       }
     </style>
@@ -460,7 +460,7 @@
             // Should change renderer field
             if (geojsonLayer.renderer.field == stDevChangeField) {
                 geojsonLayer.renderer = caseRateRenderer;
-                geojsonLayer.title = "Cases of COVID-19";
+                geojsonLayer.title = "Cases of COVID-19 last week";
             } else if (geojsonLayer.renderer != stDevChangeField) {
                 geojsonLayer.renderer = caseChangeRenderer;
                 geojsonLayer.title = "Change in cases of COVID-19";
